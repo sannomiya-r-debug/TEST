@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Clara GAS API Test</title>
+  <style>
+    body { font-family: sans-serif; max-width: 900px; margin: 24px auto; padding: 0 12px; }
+    input, button, textarea { width: 100%; padding: 10px; margin: 6px 0; }
+    button { cursor: pointer; }
+    pre { background: #f6f6f6; padding: 12px; overflow: auto; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Clara GAS API Test</h1>
+
+  <h2>設定</h2>
+  <label>GAS WebApp URL（/execまで）</label>
+  <input id="gasUrl" value="https://script.google.com/macros/s/XXXX/exec" />
+
+  <label>API_KEY</label>
+  <input id="apiKey" value="CLARA_2026_MEMBER_SECURE_9f3KxL28" />
+
+  <h2>会員照合（verify）</h2>
+  <div class="row">
+    <div>
+      <label>会員番号</label>
+      <input id="memberNo" placeholder="123456" />
+      <label>姓（フリガナ）</label>
+      <input id="seiKana" placeholder="タカラヅカ" />
+      <label>名（フリガナ）</label>
+      <input id="meiKana" placeholder="タロウ" />
+      <label>生年月日（YYYY-MM-DD）</label>
+      <input id="birthdate" placeholder="1970-01-31" />
+      <button id="btnVerify">verify 実行</button>
+    </div>
+    <div>
+      <label>verify結果</label>
+      <pre id="outVerify"></pre>
+    </div>
+  </div>
+
+  <h2>資料請求（create_request）</h2>
+  <div class="row">
+    <div>
+      <label>希望資料（カンマ区切り）</label>
+      <input id="materials" value="プレミアム会員申込書,サービスや料金についての資料" />
+      <label>受付経路（固定3択）</label>
+      <input id="channel" value="LINE(会員マイページ)" />
+      <label>備考</label>
+      <textarea id="note" rows="4" placeholder="備考があれば"></textarea>
+      <button id="btnCreate">create_request 実行（verify成功後）</button>
+    </div>
+    <div>
+      <label>create結果</label>
+      <pre id="outCreate"></pre>
+    </div>
+  </div>
+
+<script>
+  // ★あなたのGASが「api_keyをbodyで受ける」場合と「ヘッダーで受ける」場合の両方に対応
+  async function callApi(payload) {
+    const gasUrl = document.getElementById('gasUrl').value.trim();
+    const apiKey = document.getElementById('apiKey').value.trim();
+
+    // 1) bodyに api_key を入れる方式
+    const bodyPayload = { ...payload, api_key: apiKey };
+
+    // 2) ヘッダーに X-API-KEY を入れる方式（どちらでも通るように両方送ります）
+    const res = await fetch(gasUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-KEY': apiKey
+      },
+      body: JSON.stringify(bodyPayload)
+    });
+
+    const text = await res.text();
+    try { return JSON.parse(text); } catch { return { ok:false, raw:text, status:res.status }; }
+  }
+
+  let lastMember = null;
+
+  document.getElementById('btnVerify').addEventListener('click', async () => {
+    const payload = {
+      action: 'verify',
+      member_no: document.getElementById('memberNo').value.trim(),
+      sei_kana: document.getElementById('seiKana').value.trim(),
+      mei_kana: document.getElementById('meiKana').value.trim(),
+      birthdate: document.getElementById('birthdate').value.trim()
+    };
+
+    const out = await callApi(payload);
+    document.getElementById('outVerify').textContent = JSON.stringify(out, null, 2);
+    lastMember = out?.member || null;
+  });
+
+  document.getElementById('btnCreate').addEventListener('click', async () => {
+    if (!lastMember) {
+      document.getElementById('outCreate').textContent = '先に verify を成功させてください。';
+      return;
+    }
+
+    const mats = document.getElementById('materials').value
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    const payload = {
+      action: 'create_request',
+      member_record_id: lastMember.member_record_id,
+      member_no_0: lastMember.member_no_0,
+      member_sei: lastMember.member_sei,
+      member_mei: lastMember.member_mei,
+      member_kana_sei: lastMember.member_kana_sei,
+      member_kana_mei: lastMember.member_kana_mei,
+      member_phone: lastMember.member_phone,
+      member_zip: lastMember.member_zip,
+      member_address: lastMember.member_address,
+
+      request_materials: mats,
+      request_note: document.getElementById('note').value,
+      request_channel: document.getElementById('channel').value.trim()
+    };
+
+    const out = await callApi(payload);
+    document.getElementById('outCreate').textContent = JSON.stringify(out, null, 2);
+  });
+</script>
+</body>
+</html>
